@@ -15,6 +15,7 @@
         android:layout_marginEnd="8dp"
         android:layout_marginRight="8dp"
         android:layout_marginBottom="8dp"
+        android:paddingBottom="16dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -80,6 +81,22 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/remotePortText" />
 
+        <EditText
+            android:id="@+id/trojanURLText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginBottom="12dp"
+            android:ems="10"
+            android:hint="@string/trojan_url"
+            android:inputType="text"
+            android:textSize="20sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/passwordText" />
+
         <Switch
             android:id="@+id/ipv6Switch"
             android:layout_width="match_parent"
@@ -92,7 +109,7 @@
             android:textSize="@dimen/text_size"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/passwordText" />
+            app:layout_constraintTop_toBottomOf="@+id/trojanURLText" />
 
         <Switch
             android:id="@+id/verifySwitch"
@@ -144,7 +161,7 @@
         <Button
             android:id="@+id/startStopButton"
             android:layout_width="match_parent"
-            android:layout_height="65dp"
+            android:layout_height="64dp"
             android:layout_margin="16dp"
             android:text="@string/button_service__start"
             android:textSize="@dimen/text_size"
@@ -152,6 +169,19 @@
             app:layout_constraintHorizontal_bias="1.0"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/columnContainer" />
+
+        <Button
+            android:id="@+id/testConnectionButton"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_margin="16dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/test_connection"
+            android:textSize="@dimen/text_size"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="1.0"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/startStopButton" />
 
     </android.support.constraint.ConstraintLayout>
 </ScrollView>

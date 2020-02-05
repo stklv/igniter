@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.FileInputStream;
 
 import clash.Clash;
+import freeport.Freeport;
 import tun2socks.Tun2socks;
 
 
@@ -23,6 +24,11 @@ public class ProxyService extends VpnService {
     public static final int STOPPED = 3;
     public static final String STATUS_EXTRA_NAME = "service_state";
     public static final String CLASH_EXTRA_NAME = "enable_clash";
+    public long tun2socksPort;
+    public boolean enable_clash = false;
+    public static ProxyService getInstance() {
+        return instance;
+    }
 
     private static final int VPN_MTU = 1500;
     private static final String PRIVATE_VLAN4_CLIENT = "172.19.0.1";
@@ -34,17 +40,12 @@ public class ProxyService extends VpnService {
     private ParcelFileDescriptor pfd;
     private LocalBroadcastManager broadcastManager;
 
-    public boolean enable_clash = false;
-    public static ProxyService getInstance() {
-        return instance;
-    }
-
     private void setState(int state) {
         this.state = state;
         sendStateChangeBroadcast();
     }
 
-    public int getState(){
+    public int getState() {
         return state;
     }
 
@@ -107,7 +108,17 @@ public class ProxyService extends VpnService {
         b.setSession(getString(R.string.app_name));
         b.setMtu(VPN_MTU);
         b.addAddress(PRIVATE_VLAN4_CLIENT, 30);
-        b.addRoute("0.0.0.0", 0);
+        if (enable_clash) {
+            for (String route : getResources().getStringArray(R.array.bypass_private_route)) {
+                String[] parts = route.split("/", 2);
+                b.addRoute(parts[0], Integer.parseInt(parts[1]));
+            }
+            // fake ip range for clash
+            b.addRoute("255.0.128.0", 20);
+        } else {
+            b.addRoute("0.0.0.0", 0);
+        }
+
         if (enable_ipv6) {
             b.addAddress(PRIVATE_VLAN6_CLIENT, 126);
             b.addRoute("::", 0);
@@ -128,20 +139,43 @@ public class ProxyService extends VpnService {
             return START_NOT_STICKY;
         }
         int fd = pfd.detachFd();
-        JNIHelper.trojan(getFilesDir() + "/config.json");
+        long trojanPort;
+        try {
+            trojanPort = Freeport.getFreePort();
+        } catch (Exception e) {
+            e.printStackTrace();
+            trojanPort = 1081;
+        }
+        Log.i("igniter", "trojan port is " + trojanPort);
+        TrojanHelper.ChangeListenPort(Globals.getTrojanConfigPath(), trojanPort);
+        TrojanHelper.ShowConfig(Globals.getTrojanConfigPath());
 
-        int tun2socksPort;
+        JNIHelper.trojan(Globals.getTrojanConfigPath());
+
+        long clashSocksPort = 1080; // default value in case fail to get free port
         if (enable_clash) {
             try {
+
+                // clash and trojan should NOT listen on the same port
+                do {
+                    clashSocksPort = Freeport.getFreePort();
+                }
+                while (clashSocksPort == trojanPort);
+
+                Log.i("igniter", "clash port is " + clashSocksPort);
+                ClashHelper.ChangeClashConfig(Globals.getClashConfigPath(),
+                        trojanPort, clashSocksPort);
+                ClashHelper.ShowConfig(Globals.getClashConfigPath());
                 Clash.start(getFilesDir().toString());
                 Log.e("Clash", "clash started");
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            tun2socksPort = 1080;
+            tun2socksPort = clashSocksPort;
         } else {
-            tun2socksPort = 1081;
+            tun2socksPort = trojanPort;
         }
+        Log.i("igniter", "tun2socks port is " + tun2socksPort);
         Tun2socks.start(fd, "127.0.0.1:" + tun2socksPort, "255.0.128.1", "255.0.143.254", VPN_MTU);
 
         setState(STARTED);
