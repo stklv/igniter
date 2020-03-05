@@ -2,25 +2,29 @@ package io.github.trojan_gfw.igniter;
 
 
 import android.app.Activity;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.VpnService;
+import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.text.method.LinkMovementMethod;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -42,9 +46,35 @@ public class MainActivity extends AppCompatActivity {
     private TextView clashLink;
     private Button startStopButton;
     private EditText trojanURLText;
-    protected Button testConnectionButton;
 
     private BroadcastReceiver serviceStateReceiver;
+
+    private void createNotificationChannel(String channelId) {
+        // Create the NotificationChannel, but only on API 26+ because
+        // the NotificationChannel class is new and not in the support library
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = getString(R.string.notification_channel_name);
+            String description = getString(R.string.notification_channel_description);
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            NotificationChannel channel = new NotificationChannel(channelId, name, importance);
+            channel.setDescription(description);
+            // Register the channel with the system; you can't change the importance
+            // or other notification behaviors after this
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+
+    private void destoryNotificationChannel(String channelId) {
+        // Create the NotificationChannel, but only on API 26+ because
+        // the NotificationChannel class is new and not in the support library
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Register the channel with the system; you can't change the importance
+            // or other notification behaviors after this
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.deleteNotificationChannel(channelId);
+        }
+    }
 
     private void copyRawResourceToDir(int resId, String destPathName, boolean override) {
         File file = new File(destPathName);
@@ -116,9 +146,9 @@ public class MainActivity extends AppCompatActivity {
         clashLink = findViewById(R.id.clashLink);
         clashLink.setMovementMethod(LinkMovementMethod.getInstance());
         startStopButton = findViewById(R.id.startStopButton);
-        testConnectionButton = findViewById(R.id.testConnectionButton);
 
         Globals.Init(this);
+        createNotificationChannel(getString(R.string.notification_channel_id));
 
         copyRawResourceToDir(R.raw.cacert, Globals.getCaCertPath(), true);
         copyRawResourceToDir(R.raw.country, Globals.getCountryMmdbPath(), true);
@@ -153,6 +183,19 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        passwordText.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    passwordText.setInputType(EditorInfo.TYPE_CLASS_TEXT | EditorInfo.TYPE_TEXT_VARIATION_PASSWORD);
+                } else {
+                    // place cursor on the end
+                    passwordText.setInputType(EditorInfo.TYPE_CLASS_TEXT);
+                    passwordText.setSelection(passwordText.getText().length());
+                }
+            }
+        });
+
         passwordText.addTextChangedListener(new TextViewListener() {
             @Override
             protected void onTextChanged(String before, String old, String aNew, String after) {
@@ -163,7 +206,6 @@ public class MainActivity extends AppCompatActivity {
                 endUpdates();
             }
         });
-
 
         ipv6Switch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -186,6 +228,18 @@ public class MainActivity extends AppCompatActivity {
             public boolean onLongClick(View v) {
                 trojanURLText.selectAll();
                 return false;
+            }
+        });
+
+        trojanURLText.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (!hasFocus) {
+                    trojanURLText.setInputType(EditorInfo.TYPE_CLASS_TEXT | EditorInfo.TYPE_TEXT_VARIATION_PASSWORD);
+                } else {
+                    // it seems we don't have to place cursor on the end for Trojan URL
+                    trojanURLText.setInputType(EditorInfo.TYPE_CLASS_TEXT);
+                }
             }
         });
 
@@ -256,12 +310,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        testConnectionButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                new TestConnection(MainActivity.this).execute(CONNECTION_TEST_URL);
-            }
-        });
-
         serviceStateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -283,6 +331,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Bind menu items to their relative actions
+        switch (item.getItemId()) {
+            case R.id.action_test_connection:
+                new TestConnection(MainActivity.this).execute(CONNECTION_TEST_URL);
+                return true;
+            case R.id.action_show_develop_info_logcat:
+                util.Util.logGoRoutineCount();
+                util.Util.logGoroutineStackTrace();
+                return true;
+            default:
+                // Invoke the superclass to handle it.
+                return super.onOptionsItemSelected(item);
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         File file = new File(Globals.getTrojanConfigPath());
@@ -291,12 +363,15 @@ public class MainActivity extends AppCompatActivity {
                 try (FileInputStream fis = new FileInputStream(file)) {
                     byte[] content = new byte[(int) file.length()];
                     fis.read(content);
-                    JSONObject json = new JSONObject(new String(content));
-                    remoteAddrText.setText(json.getString("remote_addr"));
-                    remotePortText.setText(String.valueOf(json.getInt("remote_port")));
-                    passwordText.setText(json.getJSONArray("password").getString(0));
-                    ipv6Switch.setChecked(json.getBoolean("enable_ipv6"));
-                    verifySwitch.setChecked(json.getJSONObject("ssl").getBoolean("verify"));
+                    String contentStr = new String(content);
+                    TrojanConfig ins = Globals.getTrojanConfigInstance();
+                    ins.fromJSON(contentStr);
+
+                    remoteAddrText.setText(ins.getRemoteAddr());
+                    remotePortText.setText(String.valueOf(ins.getRemotePort()));
+                    passwordText.setText(ins.getPassword());
+                    ipv6Switch.setChecked(ins.getEnableIpv6());
+                    verifySwitch.setChecked(ins.getVerifyCert());
                 }
             } catch (Exception e) {
                 e.printStackTrace();

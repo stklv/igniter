@@ -29,16 +29,9 @@ class TestConnection extends AsyncTask<String, Void, TestConnectionResult> {
     private static final int DEFAULT_TIMEOUT = 10 * 1000; // 10 seconds
 
     private WeakReference<MainActivity> activityReference;
+
     TestConnection(MainActivity context) {
         activityReference = new WeakReference<>(context);
-    }
-    protected void onPreExecute() {
-        super.onPreExecute();
-        MainActivity activity = activityReference.get();
-        if (activity != null) {
-            activity.testConnectionButton.setText(R.string.testing);
-            activity.testConnectionButton.setEnabled(false);
-        }
     }
 
     protected TestConnectionResult doInBackground(String... urls) {
@@ -63,17 +56,16 @@ class TestConnection extends AsyncTask<String, Void, TestConnectionResult> {
     protected void onPostExecute(TestConnectionResult result) {
         MainActivity activity = activityReference.get();
         if (activity != null) {
-            activity.testConnectionButton.setText(R.string.test_connection);
-            activity.testConnectionButton.setEnabled(true);
             if (result.isConnected) {
                 Toast.makeText(activity,
                         activity.getString(R.string.connected_to__in__ms,
                                 result.url, String.valueOf(result.time)),
                         Toast.LENGTH_LONG).show();
             } else {
+                result.error.printStackTrace();
                 Toast.makeText(activity,
                         activity.getString(R.string.failed_to_connect_to__,
-                                result.url, result.error.getMessage()),
+                                result.url, "Please start igniter before testing"),
                         Toast.LENGTH_LONG).show();
             }
         }
