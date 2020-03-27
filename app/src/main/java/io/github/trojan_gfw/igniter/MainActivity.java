@@ -18,6 +18,7 @@ import android.text.method.LinkMovementMethod;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CompoundButton;
@@ -31,12 +32,23 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 
+import io.github.trojan_gfw.igniter.common.os.Task;
+import io.github.trojan_gfw.igniter.common.os.Threads;
+import io.github.trojan_gfw.igniter.common.utils.SnackbarUtils;
+import io.github.trojan_gfw.igniter.exempt.activity.ExemptAppActivity;
+import io.github.trojan_gfw.igniter.servers.activity.ServerListActivity;
+import io.github.trojan_gfw.igniter.servers.data.ServerListDataManager;
+import io.github.trojan_gfw.igniter.servers.data.ServerListDataSource;
+
 
 public class MainActivity extends AppCompatActivity {
-
+    private static final String TAG = "MainActivity";
+    private static final int SERVER_LIST_CHOOSE_REQUEST_CODE = 1024;
+    private static final int EXEMPT_APP_CONFIGURE_REQUEST_CODE = 2077;
     private static final int VPN_REQUEST_CODE = 0;
     private static final String CONNECTION_TEST_URL = "https://www.google.com";
 
+    private ViewGroup rootViewGroup;
     private EditText remoteAddrText;
     private EditText remotePortText;
     private EditText passwordText;
@@ -48,6 +60,50 @@ public class MainActivity extends AppCompatActivity {
     private EditText trojanURLText;
 
     private BroadcastReceiver serviceStateReceiver;
+    private ServerListDataSource serverListDataManager;
+    private TextViewListener remoteAddrTextListener = new TextViewListener() {
+        @Override
+        protected void onTextChanged(String before, String old, String aNew, String after) {
+            // update TextView
+            startUpdates(); // to prevent infinite loop.
+            if (remoteAddrText.hasFocus()) {
+                TrojanConfig ins = Globals.getTrojanConfigInstance();
+                ins.setRemoteAddr(remoteAddrText.getText().toString());
+            }
+            endUpdates();
+        }
+    };
+    private TextViewListener remotePortTextListener = new TextViewListener() {
+        @Override
+        protected void onTextChanged(String before, String old, String aNew, String after) {
+            // update TextView
+            startUpdates(); // to prevent infinite loop.
+            if (remotePortText.hasFocus()) {
+                TrojanConfig ins = Globals.getTrojanConfigInstance();
+                String portStr = remotePortText.getText().toString();
+                try {
+                    int port = Integer.parseInt(portStr);
+                    ins.setRemotePort(port);
+                } catch (NumberFormatException e) {
+                    // Ignore when we get invalid number
+                    e.printStackTrace();
+                }
+            }
+            endUpdates();
+        }
+    };
+    private TextViewListener passwordTextListener = new TextViewListener() {
+        @Override
+        protected void onTextChanged(String before, String old, String aNew, String after) {
+            // update TextView
+            startUpdates(); // to prevent infinite loop.
+            if (passwordText.hasFocus()) {
+                TrojanConfig ins = Globals.getTrojanConfigInstance();
+                ins.setPassword(passwordText.getText().toString());
+            }
+            endUpdates();
+        }
+    };
 
     private void createNotificationChannel(String channelId) {
         // Create the NotificationChannel, but only on API 26+ because
@@ -136,6 +192,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        rootViewGroup = findViewById(R.id.rootScrollView);
+        Button saveServerIb = findViewById(R.id.saveConfigBtn);
         remoteAddrText = findViewById(R.id.remoteAddrText);
         remotePortText = findViewById(R.id.remotePortText);
         passwordText = findViewById(R.id.passwordText);
@@ -154,34 +212,9 @@ public class MainActivity extends AppCompatActivity {
         copyRawResourceToDir(R.raw.country, Globals.getCountryMmdbPath(), true);
         copyRawResourceToDir(R.raw.clash_config, Globals.getClashConfigPath(), false);
 
-        remoteAddrText.addTextChangedListener(new TextViewListener() {
-            @Override
-            protected void onTextChanged(String before, String old, String aNew, String after) {
-                // update TextView
-                startUpdates(); // to prevent infinite loop.
-                TrojanConfig ins = Globals.getTrojanConfigInstance();
-                ins.setRemoteAddr(remoteAddrText.getText().toString());
-                endUpdates();
-            }
-        });
+        remoteAddrText.addTextChangedListener(remoteAddrTextListener);
 
-        remotePortText.addTextChangedListener(new TextViewListener() {
-            @Override
-            protected void onTextChanged(String before, String old, String aNew, String after) {
-                // update TextView
-                startUpdates(); // to prevent infinite loop.
-                TrojanConfig ins = Globals.getTrojanConfigInstance();
-                String portStr = remotePortText.getText().toString();
-                try {
-                    int port = Integer.parseInt(portStr);
-                    ins.setRemotePort(port);
-                } catch (NumberFormatException e) {
-                    // Ignore when we get invalid number
-                    e.printStackTrace();
-                }
-                endUpdates();
-            }
-        });
+        remotePortText.addTextChangedListener(remotePortTextListener);
 
         passwordText.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
@@ -196,16 +229,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        passwordText.addTextChangedListener(new TextViewListener() {
-            @Override
-            protected void onTextChanged(String before, String old, String aNew, String after) {
-                // update TextView
-                startUpdates(); // to prevent infinite loop.
-                TrojanConfig ins = Globals.getTrojanConfigInstance();
-                ins.setPassword(passwordText.getText().toString());
-                endUpdates();
-            }
-        });
+        passwordText.addTextChangedListener(passwordTextListener);
 
         ipv6Switch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
@@ -318,6 +342,41 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
+        saveServerIb.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!Globals.getTrojanConfigInstance().isValidRunningConfig()) {
+                    Toast.makeText(MainActivity.this, R.string.invalid_configuration, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                Threads.instance().runOnWorkThread(new Task() {
+                    @Override
+                    public void onRun() {
+                        serverListDataManager.saveServerConfig(Globals.getTrojanConfigInstance());
+                        showSaveConfigResult(true);
+                    }
+                });
+            }
+        });
+        serverListDataManager = new ServerListDataManager(Globals.getTrojanConfigListPath());
+    }
+
+    private void clearEditTextFocus() {
+        remoteAddrText.clearFocus();
+        remotePortText.clearFocus();
+        passwordText.clearFocus();
+        trojanURLText.clearFocus();
+    }
+
+    private void showSaveConfigResult(final boolean success) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(getApplicationContext(),
+                        success ? R.string.main_save_success : R.string.main_save_failed,
+                        Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     @Override
@@ -327,7 +386,33 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(this, ProxyService.class);
             intent.putExtra(ProxyService.CLASH_EXTRA_NAME, clashSwitch.isChecked());
             startService(intent);
+        } else if (SERVER_LIST_CHOOSE_REQUEST_CODE == requestCode && resultCode == Activity.RESULT_OK && data != null) {
+            trojanURLText.setText("");
+            final TrojanConfig config = data.getParcelableExtra(ServerListActivity.KEY_TROJAN_CONFIG);
+            if (config != null) {
+                config.setCaCertPath(Globals.getCaCertPath());
+                Globals.setTrojanConfigInstance(config);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        remoteAddrText.setText(config.getRemoteAddr());
+                        remotePortText.setText(String.valueOf(config.getRemotePort()));
+                        passwordText.setText(config.getPassword());
+                    }
+                });
+                trojanURLText.setText(TrojanURLHelper.GenerateTrojanURL(config));
+                ipv6Switch.setChecked(config.getEnableIpv6());
+                verifySwitch.setChecked(config.getVerifyCert());
+            }
+        } else if (EXEMPT_APP_CONFIGURE_REQUEST_CODE == requestCode && Activity.RESULT_OK == resultCode) {
+            if (isProxyRunning()) {
+                SnackbarUtils.showTextLong(rootViewGroup, R.string.main_restart_proxy_service_tip);
+            }
         }
+    }
+
+    private boolean isProxyRunning() {
+        return ProxyService.getInstance() != null;
     }
 
     @Override
@@ -348,6 +433,13 @@ public class MainActivity extends AppCompatActivity {
                 util.Util.logGoRoutineCount();
                 util.Util.logGoroutineStackTrace();
                 return true;
+            case R.id.action_view_server_list:
+                clearEditTextFocus();
+                startActivityForResult(ServerListActivity.create(MainActivity.this), SERVER_LIST_CHOOSE_REQUEST_CODE);
+                return true;
+            case R.id.action_exempt_app:
+                startActivityForResult(ExemptAppActivity.create(this), EXEMPT_APP_CONFIGURE_REQUEST_CODE);
+                return true;
             default:
                 // Invoke the superclass to handle it.
                 return super.onOptionsItemSelected(item);
@@ -355,8 +447,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
+    protected void onPostCreate(@Nullable Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
         File file = new File(Globals.getTrojanConfigPath());
         if (file.exists()) {
             try {
@@ -377,7 +469,11 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
         }
+    }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
         ProxyService serviceInstance = ProxyService.getInstance();
         if (serviceInstance == null) {
             updateViews(ProxyService.STOPPED);

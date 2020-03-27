@@ -13,10 +13,14 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.util.Set;
 
 import clash.Clash;
 import freeport.Freeport;
+import io.github.trojan_gfw.igniter.exempt.data.ExemptAppDataManager;
+import io.github.trojan_gfw.igniter.exempt.data.ExemptAppDataSource;
 import tun2socks.Tun2socks;
+import tun2socks.Tun2socksStartOptions;
 
 
 public class ProxyService extends VpnService {
@@ -43,6 +47,7 @@ public class ProxyService extends VpnService {
     private int state = STARTED;
     private ParcelFileDescriptor pfd;
     private LocalBroadcastManager broadcastManager;
+    private Set<String> exemptAppPackageNames;
 
     private void setState(int state) {
         this.state = state;
@@ -58,6 +63,8 @@ public class ProxyService extends VpnService {
         super.onCreate();
         instance = this;
         broadcastManager = LocalBroadcastManager.getInstance(this);
+        ExemptAppDataSource dataManager = new ExemptAppDataManager(getPackageManager());
+        exemptAppPackageNames = dataManager.loadExemptAppPackageNameSet();
     }
 
     @Override
@@ -92,6 +99,13 @@ public class ProxyService extends VpnService {
         } catch (PackageManager.NameNotFoundException e) {
             e.printStackTrace();
             setState(STOPPED);
+        }
+        for (String packageName : exemptAppPackageNames) {
+            try {
+                b.addDisallowedApplication(packageName);
+            } catch (PackageManager.NameNotFoundException e) {
+                e.printStackTrace();
+            }
         }
         enable_clash = intent.getBooleanExtra(CLASH_EXTRA_NAME, true);
         boolean enable_ipv6 = false;
@@ -182,13 +196,23 @@ public class ProxyService extends VpnService {
         LogHelper.i("igniter", "tun2socks port is " + tun2socksPort);
 
         // debug/info/warn/error/none
+        Tun2socksStartOptions tun2socksStartOptions = new Tun2socksStartOptions();
+        tun2socksStartOptions.setTunFd(fd);
+        tun2socksStartOptions.setSocks5Server("127.0.0.1:" + tun2socksPort);
+        tun2socksStartOptions.setEnableIPv6(enable_ipv6);
+        tun2socksStartOptions.setMTU(VPN_MTU);
+
         Tun2socks.setLoglevel("info");
         if (enable_clash) {
-            Tun2socks.start(fd, "127.0.0.1:" + tun2socksPort, "255.0.128.1", "255.0.143.254", VPN_MTU);
+            tun2socksStartOptions.setFakeIPStart("255.0.128.1");
+            tun2socksStartOptions.setFakeIPStop("255.0.143.254");
         } else {
             // Disable go-tun2socks fake ip
-            Tun2socks.start(fd, "127.0.0.1:" + tun2socksPort, "", "", VPN_MTU);
+            tun2socksStartOptions.setFakeIPStart("");
+            tun2socksStartOptions.setFakeIPStop("");
         }
+        Tun2socks.start(tun2socksStartOptions);
+        LogHelper.i("igniter", tun2socksStartOptions.toString());
 
         StringBuilder runningStatusStringBuilder = new StringBuilder();
         runningStatusStringBuilder.append("Trojan SOCKS5 port: ")
