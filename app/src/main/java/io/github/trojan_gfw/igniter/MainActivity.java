@@ -7,8 +7,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.net.Uri;
 import android.net.VpnService;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.RemoteException;
 import android.text.InputType;
@@ -37,10 +37,11 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 
-import io.github.trojan_gfw.igniter.common.os.MultiProcessSP;
+import io.github.trojan_gfw.igniter.common.constants.Constants;
 import io.github.trojan_gfw.igniter.common.os.Task;
 import io.github.trojan_gfw.igniter.common.os.Threads;
 import io.github.trojan_gfw.igniter.common.utils.PermissionUtils;
+import io.github.trojan_gfw.igniter.common.utils.PreferenceUtils;
 import io.github.trojan_gfw.igniter.common.utils.SnackbarUtils;
 import io.github.trojan_gfw.igniter.connection.TrojanConnection;
 import io.github.trojan_gfw.igniter.exempt.activity.ExemptAppActivity;
@@ -230,11 +231,18 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
             }
         });
 
-        clashSwitch.setChecked(MultiProcessSP.getEnableClash(true));
+        boolean enableClash = PreferenceUtils.getBooleanPreference(getContentResolver(),
+                Uri.parse(Constants.PREFERENCE_URI), Constants.PREFERENCE_KEY_ENABLE_CLASH, true);
+        clashSwitch.setChecked(enableClash);
         clashSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                MultiProcessSP.setEnableClash(isChecked);
+                // Generally speaking, it's better to insert content into ContentProvider in background
+                // thread, but that may cause data inconsistency when user starts proxy right after
+                // switching.
+                PreferenceUtils.putBooleanPreference(getContentResolver(),
+                        Uri.parse(Constants.PREFERENCE_URI), Constants.PREFERENCE_KEY_ENABLE_CLASH,
+                        isChecked);
             }
         });
 
@@ -266,7 +274,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
         trojanURLText.setSelectAllOnFocus(true);
 
         FrameLayout container = new FrameLayout(this);
-        FrameLayout.LayoutParams params = new  FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         params.leftMargin = getResources().getDimensionPixelSize(R.dimen.dialog_margin);
         params.rightMargin = getResources().getDimensionPixelSize(R.dimen.dialog_margin);
         trojanURLText.setLayoutParams(params);
@@ -337,12 +345,19 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
                 .shouldShowRequestPermissionRationale(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
             requestReadWriteExternalStoragePermission();
         }
+        Threads.instance().runOnWorkThread(new Task() {
+            @Override
+            public void onRun() {
+                PreferenceUtils.putBooleanPreference(getContentResolver(),
+                        Uri.parse(Constants.PREFERENCE_URI),
+                        Constants.PREFERENCE_KEY_FIRST_START, false);
+            }
+        });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-
         checkTrojanURLFromClipboard();
     }
 
@@ -351,6 +366,9 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
             @Override
             public void run() {
                 final ClipboardManager clipboardManager = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (!clipboardManager.hasPrimaryClip()) {
+                    return;
+                }
                 ClipData clipData = clipboardManager.getPrimaryClip();
                 // check clipboard
                 if (clipData == null || clipData.getItemCount() == 0) {
@@ -364,8 +382,8 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
                 }
 
                 // show once if trojan url
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    clipboardManager.clearPrimaryClip();
+                if (clipboardManager.hasPrimaryClip()) {
+                    clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""));
                 }
                 new AlertDialog.Builder(MainActivity.this)
                         .setMessage(R.string.clipboard_import_tip)

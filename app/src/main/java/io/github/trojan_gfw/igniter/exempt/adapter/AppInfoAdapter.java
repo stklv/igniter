@@ -2,16 +2,16 @@ package io.github.trojan_gfw.igniter.exempt.adapter;
 
 import android.content.res.Resources;
 import android.graphics.Rect;
-import androidx.annotation.NonNull;
-import androidx.core.widget.TextViewCompat;
-import androidx.recyclerview.widget.RecyclerView;
-
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CompoundButton;
 import android.widget.Switch;
 import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.core.widget.TextViewCompat;
+import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -84,7 +84,7 @@ public class AppInfoAdapter extends RecyclerView.Adapter<AppInfoAdapter.ViewHold
         @Override
         public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
             if (mOnItemOperationListener != null) {
-                mOnItemOperationListener.onToggle(isChecked, mCurrentInfo, getAdapterPosition());
+                mOnItemOperationListener.onToggle(isChecked, mCurrentInfo, getBindingAdapterPosition());
             }
         }
 

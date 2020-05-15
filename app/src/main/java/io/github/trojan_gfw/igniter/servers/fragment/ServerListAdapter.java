@@ -1,12 +1,13 @@
 package io.github.trojan_gfw.igniter.servers.fragment;
 
 import android.content.Context;
-import androidx.annotation.NonNull;
-import androidx.recyclerview.widget.RecyclerView;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -77,7 +78,7 @@ class ViewHolder extends RecyclerView.ViewHolder {
             @Override
             public void onClick(View v) {
                 if (itemClickListener != null) {
-                    itemClickListener.onItemSelected(mConfig, getAdapterPosition());
+                    itemClickListener.onItemSelected(mConfig, getBindingAdapterPosition());
                 }
             }
         });
@@ -85,7 +86,7 @@ class ViewHolder extends RecyclerView.ViewHolder {
             @Override
             public void onClick(View v) {
                 if (itemClickListener != null) {
-                    itemClickListener.onItemDelete(mConfig, getAdapterPosition());
+                    itemClickListener.onItemDelete(mConfig, getBindingAdapterPosition());
                 }
             }
         });
