@@ -16,8 +16,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import io.github.trojan_gfw.igniter.Globals;
 import io.github.trojan_gfw.igniter.TrojanConfig;
+import io.github.trojan_gfw.igniter.TrojanHelper;
 import io.github.trojan_gfw.igniter.TrojanURLHelper;
+import io.github.trojan_gfw.igniter.common.constants.ConfigFileConstants;
 import io.github.trojan_gfw.igniter.common.os.Task;
 import io.github.trojan_gfw.igniter.common.os.Threads;
 import io.github.trojan_gfw.igniter.servers.contract.ServerListContract;
@@ -41,6 +44,51 @@ public class ServerListPresenter implements ServerListContract.Presenter {
     @Override
     public void displayImportFileDescription() {
         mView.showImportFileDescription();
+    }
+
+    @Override
+    public void exportServerListToFile() {
+        Threads.instance().runOnWorkThread(new Task() {
+            @Override
+            public void onRun() {
+                exportConfigFile();
+            }
+        });
+    }
+
+    private void exportConfigFile() {
+        boolean success = false;
+        try {
+            String exportContent = getExportContent();
+            success = TrojanHelper.writeStringToFile(exportContent, Globals.getIgniterExportPath());
+        } catch (Exception ignore) {
+        }
+        if (success) {
+            mView.showExportServerListSuccess();
+        } else {
+            mView.showExportServerListFailure();
+        }
+    }
+
+    private String getExportContent() throws JSONException {
+        List<TrojanConfig> trojanConfigs = mDataManager.loadServerConfigList();
+        JSONArray array = new JSONArray();
+        int index = 0;
+        for (TrojanConfig trojanConfig : trojanConfigs) {
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put(ConfigFileConstants.REMARKS, trojanConfig.getRemoteServerRemark());
+            jsonObject.put(ConfigFileConstants.SERVER, trojanConfig.getRemoteAddr());
+            jsonObject.put(ConfigFileConstants.SERVER_PORT, trojanConfig.getRemotePort());
+            jsonObject.put(ConfigFileConstants.PASSWORD, trojanConfig.getPassword());
+            jsonObject.put(ConfigFileConstants.VERIFY, trojanConfig.getVerifyCert());
+            // for future
+            // jsonObject.put("enable_ipv6", trojanConfig.getEnableIpv6());
+            // jsonObject.put("enable_clash", trojanConfig.getEnableClash());
+            array.put(index++, jsonObject);
+        }
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put(ConfigFileConstants.CONFIGS, array);
+        return jsonObject.toString();
     }
 
     @Override
@@ -86,7 +134,7 @@ public class ServerListPresenter implements ServerListContract.Presenter {
     private List<TrojanConfig> parseTrojanConfigsFromFileContent(String fileContent) {
         try {
             JSONObject jsonObject = new JSONObject(fileContent);
-            JSONArray configs = jsonObject.optJSONArray("configs");
+            JSONArray configs = jsonObject.optJSONArray(ConfigFileConstants.CONFIGS);
             if (configs == null) {
                 return Collections.emptyList();
             }
@@ -94,15 +142,16 @@ public class ServerListPresenter implements ServerListContract.Presenter {
             List<TrojanConfig> list = new ArrayList<>(len);
             for (int i = 0; i < len; i++) {
                 JSONObject config = configs.getJSONObject(i);
-                String remoteAddr = config.optString("server", null);
+                String remoteAddr = config.optString(ConfigFileConstants.SERVER, null);
                 if (remoteAddr == null) {
                     continue;
                 }
                 TrojanConfig tmp = new TrojanConfig();
+                tmp.setRemoteServerRemark(config.optString(ConfigFileConstants.REMARKS, ConfigFileConstants.NO_REMARKS));
                 tmp.setRemoteAddr(remoteAddr);
-                tmp.setRemotePort(config.optInt("server_port"));
-                tmp.setPassword(config.optString("password"));
-                tmp.setVerifyCert(config.optBoolean("verify"));
+                tmp.setRemotePort(config.optInt(ConfigFileConstants.SERVER_PORT));
+                tmp.setPassword(config.optString(ConfigFileConstants.PASSWORD));
+                tmp.setVerifyCert(config.optBoolean(ConfigFileConstants.VERIFY));
                 list.add(tmp);
             }
             return list;

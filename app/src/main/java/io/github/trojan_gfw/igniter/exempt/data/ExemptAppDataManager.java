@@ -7,6 +7,7 @@ import android.os.Build;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -20,9 +21,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
-import io.github.trojan_gfw.igniter.Globals;
-import io.github.trojan_gfw.igniter.common.utils.FileUtils;
 
 /**
  * Implementation of {@link ExemptAppDataSource}. This class reads and writes exempted app list in a
@@ -38,41 +36,33 @@ import io.github.trojan_gfw.igniter.common.utils.FileUtils;
  */
 public class ExemptAppDataManager implements ExemptAppDataSource {
     private final PackageManager mPackageManager;
-    private final String mInternalExemptAppListFilePath;
-    private final String mExternalExemptAppListFilePath;
+    private final String mBlockAppListFilePath;
+    private final String mAllowAppListFilePath;
 
-    public ExemptAppDataManager(Context context, String internalExemptAppListFilePath,
-                                String externalExemptAppListFilePath) {
+    public ExemptAppDataManager(Context context, String blockAppListFilePath,
+                                String allowAppListFilePath) {
         super();
         mPackageManager = context.getPackageManager();
-        mInternalExemptAppListFilePath = internalExemptAppListFilePath;
-        mExternalExemptAppListFilePath = externalExemptAppListFilePath;
+        mBlockAppListFilePath = blockAppListFilePath;
+        mAllowAppListFilePath = allowAppListFilePath;
     }
 
     @Override
-    public void deleteExternalExemptAppInfo() {
-        new File(mExternalExemptAppListFilePath).delete();
+    public void saveAllowAppInfoSet(@Nullable Set<String> allowAppPackageNames) {
+        saveAppPackageNameSet(allowAppPackageNames, mAllowAppListFilePath);
     }
 
     @Override
-    public void migrateExternalExemptAppInfo() {
-        File externalSrcFile = new File(Globals.getExternalExemptedAppListPath());
-        File internalDestFile = new File(Globals.getInternalExemptedAppListPath());
-        FileUtils.copy(externalSrcFile, internalDestFile);
+    public void saveBlockAppInfoSet(@Nullable Set<String> blockAppPackageNames) {
+        saveAppPackageNameSet(blockAppPackageNames, mBlockAppListFilePath);
     }
 
-    @Override
-    public boolean checkExternalExemptAppInfoConfigExistence() {
-        return new File(mExternalExemptAppListFilePath).exists();
-    }
-
-    @Override
-    public void saveExemptAppInfoSet(Set<String> exemptAppPackageNames) {
-        File file = new File(mInternalExemptAppListFilePath);
+    private void saveAppPackageNameSet(@Nullable Set<String> packageNameSet, String filePath) {
+        File file = new File(filePath);
         if (file.exists()) {
             file.delete();
         }
-        if (exemptAppPackageNames == null || exemptAppPackageNames.isEmpty()) {
+        if (packageNameSet == null || packageNameSet.isEmpty()) {
             return;
         }
         File dir = file.getParentFile();
@@ -82,7 +72,7 @@ public class ExemptAppDataManager implements ExemptAppDataSource {
         try (FileOutputStream fos = new FileOutputStream(file);
              OutputStreamWriter osw = new OutputStreamWriter(fos);
              BufferedWriter bw = new BufferedWriter(osw)) {
-            for (String name : exemptAppPackageNames) {
+            for (String name : packageNameSet) {
                 bw.write(name);
                 bw.write('\n');
             }
@@ -93,8 +83,8 @@ public class ExemptAppDataManager implements ExemptAppDataSource {
     }
 
     @NonNull
-    private Set<String> readExemptAppListConfig() {
-        File file = new File(mInternalExemptAppListFilePath);
+    private Set<String> readExemptAppListConfig(String filePath) {
+        File file = new File(filePath);
         Set<String> exemptAppSet = new HashSet<>();
         if (!file.exists()) {
             return exemptAppSet;
@@ -114,8 +104,17 @@ public class ExemptAppDataManager implements ExemptAppDataSource {
     }
 
     @Override
-    public Set<String> loadExemptAppPackageNameSet() {
-        Set<String> exemptAppPackageNames = readExemptAppListConfig();
+    public Set<String> loadAllowAppPackageNameSet() {
+        return loadAppPackageNameSet(mAllowAppListFilePath);
+    }
+
+    @Override
+    public Set<String> loadBlockAppPackageNameSet() {
+        return loadAppPackageNameSet(mBlockAppListFilePath);
+    }
+
+    private Set<String> loadAppPackageNameSet(String filePath) {
+        Set<String> exemptAppPackageNames = readExemptAppListConfig(filePath);
         // filter uninstalled apps
         List<ApplicationInfo> applicationInfoList = queryCurrentInstalledApps();
         Set<String> installedAppPackageNames = new HashSet<>();
