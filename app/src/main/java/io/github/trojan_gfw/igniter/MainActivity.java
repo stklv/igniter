@@ -12,8 +12,10 @@ import android.os.Bundle;
 import android.os.RemoteException;
 import android.text.InputType;
 import android.text.method.LinkMovementMethod;
+import android.view.GestureDetector;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
@@ -38,6 +40,7 @@ import java.io.InputStream;
 import io.github.trojan_gfw.igniter.common.constants.Constants;
 import io.github.trojan_gfw.igniter.common.os.Task;
 import io.github.trojan_gfw.igniter.common.os.Threads;
+import io.github.trojan_gfw.igniter.common.utils.AnimationUtils;
 import io.github.trojan_gfw.igniter.common.utils.PreferenceUtils;
 import io.github.trojan_gfw.igniter.common.utils.SnackbarUtils;
 import io.github.trojan_gfw.igniter.connection.TrojanConnection;
@@ -61,6 +64,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
     private ViewGroup rootViewGroup;
     private EditText remoteServerRemarkText;
     private EditText remoteAddrText;
+    private EditText remoteServerSNIText;
     private EditText remotePortText;
     private EditText passwordText;
     private Switch ipv6Switch;
@@ -72,7 +76,8 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
     private @ProxyService.ProxyState
     int proxyState = ProxyService.STATE_NONE;
     private final TrojanConnection connection = new TrojanConnection(false);
-    private ITrojanService trojanService;
+    private final Object lock = new Object();
+    private volatile ITrojanService trojanService;
     private ServerListDataSource serverListDataManager;
     private AlertDialog linkDialog;
 
@@ -96,11 +101,27 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
             startUpdates(); // to prevent infinite loop.
             if (remoteAddrText.hasFocus()) {
                 TrojanConfig ins = Globals.getTrojanConfigInstance();
-                ins.setRemoteAddr(remoteAddrText.getText().toString());
+                String remoteAddrRawStr = remoteAddrText.getText().toString();
+                ins.setRemoteAddr(remoteAddrRawStr.trim());
             }
             endUpdates();
         }
     };
+
+    private TextViewListener remoteServerSNITextListener = new TextViewListener() {
+        @Override
+        protected void onTextChanged(String before, String old, String aNew, String after) {
+            // update TextView
+            startUpdates(); // to prevent infinite loop.
+            if (remoteServerSNIText.hasFocus()) {
+                TrojanConfig ins = Globals.getTrojanConfigInstance();
+                String remoteServerSNIRawStr = remoteServerSNIText.getText().toString();
+                ins.setSNI(remoteServerSNIRawStr.trim());
+            }
+            endUpdates();
+        }
+    };
+
     private TextViewListener remotePortTextListener = new TextViewListener() {
         @Override
         protected void onTextChanged(String before, String old, String aNew, String after) {
@@ -182,6 +203,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
         }
         remoteServerRemarkText.setEnabled(inputEnabled);
         remoteAddrText.setEnabled(inputEnabled);
+        remoteServerSNIText.setEnabled(inputEnabled);
         remotePortText.setEnabled(inputEnabled);
         ipv6Switch.setEnabled(inputEnabled);
         passwordText.setEnabled(inputEnabled);
@@ -196,15 +218,18 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
         if (parsedConfig != null) {
             String remoteServerRemark = parsedConfig.getRemoteServerRemark();
             String remoteAddress = parsedConfig.getRemoteAddr();
+            String remoteServerSNI = parsedConfig.getSNI();
             int remotePort = parsedConfig.getRemotePort();
             String password = parsedConfig.getPassword();
 
             ins.setRemoteServerRemark(remoteServerRemark);
+            ins.setSNI(remoteServerSNI);
             ins.setRemoteAddr(remoteAddress);
             ins.setRemotePort(remotePort);
             ins.setPassword(password);
 
             remoteServerRemarkText.setText(remoteServerRemark);
+            remoteServerSNIText.setText(remoteServerSNI);
             passwordText.setText(password);
             remotePortText.setText(String.valueOf(remotePort));
             remoteAddrText.setText(remoteAddress);
@@ -218,6 +243,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
         rootViewGroup = findViewById(R.id.rootScrollView);
         remoteServerRemarkText = findViewById(R.id.remoteServerRemarkText);
         remoteAddrText = findViewById(R.id.remoteAddrText);
+        remoteServerSNIText = findViewById(R.id.remoteServerSNIText);
         remotePortText = findViewById(R.id.remotePortText);
         passwordText = findViewById(R.id.passwordText);
         ipv6Switch = findViewById(R.id.ipv6Switch);
@@ -234,6 +260,8 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
         remoteServerRemarkText.addTextChangedListener(remoteServerRemarkTextListener);
 
         remoteAddrText.addTextChangedListener(remoteAddrTextListener);
+
+        remoteServerSNIText.addTextChangedListener(remoteServerSNITextListener);
 
         remotePortText.addTextChangedListener(remotePortTextListener);
 
@@ -328,6 +356,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
         };
 
         remoteAddrText.addTextChangedListener(trojanConfigChangedTextViewListener);
+        remoteServerSNIText.addTextChangedListener(trojanConfigChangedTextViewListener);
         remotePortText.addTextChangedListener(trojanConfigChangedTextViewListener);
         passwordText.addTextChangedListener(trojanConfigChangedTextViewListener);
 
@@ -358,7 +387,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
                 }
             }
         });
-        serverListDataManager = new ServerListDataManager(Globals.getTrojanConfigListPath());
+        serverListDataManager = new ServerListDataManager(Globals.getTrojanConfigListPath(), false, "", 0L);
         connection.connect(this, this);
         Threads.instance().runOnWorkThread(new Task() {
             @Override
@@ -368,6 +397,28 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
                         Constants.PREFERENCE_KEY_FIRST_START, false);
             }
         });
+        View horseIv = findViewById(R.id.imageView);
+        GestureDetector gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                swayTheHorse();
+                return true;
+            }
+        });
+        horseIv.setOnTouchListener((v, event) -> {
+            return gestureDetector.onTouchEvent(event);
+        });
+    }
+
+    private void swayTheHorse() {
+        View v = findViewById(R.id.imageView);
+        v.clearAnimation();
+        AnimationUtils.sway(v, 60f, 500L, 4f);
     }
 
     @Override
@@ -418,7 +469,9 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
     @Override
     public void onServiceConnected(final ITrojanService service) {
         LogHelper.i(TAG, "onServiceConnected");
-        trojanService = service;
+        synchronized (lock) {
+            trojanService = service;
+        }
         Threads.instance().runOnWorkThread(new Task() {
             @Override
             public void onRun() {
@@ -440,7 +493,9 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
     @Override
     public void onServiceDisconnected() {
         LogHelper.i(TAG, "onServiceConnected");
-        trojanService = null;
+        synchronized (lock) {
+            trojanService = null;
+        }
     }
 
     @Override
@@ -487,7 +542,10 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
      * to {@link #onTestResult(String, boolean, long, String)} by {@link TrojanConnection}.
      */
     private void testConnection() {
-        ITrojanService service = trojanService;
+        ITrojanService service;
+        synchronized (lock) {
+            service = trojanService;
+        }
         if (service == null) {
             showTestConnectionResult(CONNECTION_TEST_URL, false, 0L, getString(R.string.trojan_service_not_available));
         } else {
@@ -505,7 +563,10 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
      * is from remote process, a {@link RemoteException} might be thrown.
      */
     private void showDevelopInfoInLogcat() {
-        ITrojanService service = trojanService;
+        ITrojanService service;
+        synchronized (lock) {
+            service = trojanService;
+        }
         if (service != null) {
             try {
                 service.showDevelopInfoInLogcat();
@@ -518,6 +579,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
     private void clearEditTextFocus() {
         remoteServerRemarkText.clearFocus();
         remoteAddrText.clearFocus();
+        remoteServerSNIText.clearFocus();
         remotePortText.clearFocus();
         passwordText.clearFocus();
     }
@@ -547,6 +609,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
                     public void run() {
                         remoteServerRemarkText.setText(config.getRemoteServerRemark());
                         remoteAddrText.setText(config.getRemoteAddr());
+                        remoteServerSNIText.setText(config.getSNI());
                         remotePortText.setText(String.valueOf(config.getRemotePort()));
                         passwordText.setText(config.getPassword());
                         TrojanHelper.WriteTrojanConfig(Globals.getTrojanConfigInstance(), Globals.getTrojanConfigPath());
@@ -601,8 +664,7 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
                 });
                 return true;
             case R.id.action_view_server_list:
-                clearEditTextFocus();
-                startActivityForResult(ServerListActivity.create(MainActivity.this), SERVER_LIST_CHOOSE_REQUEST_CODE);
+                gotoServerList();
                 return true;
             case R.id.action_about:
                 clearEditTextFocus();
@@ -622,6 +684,33 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
         }
     }
 
+    private void gotoServerList() {
+        clearEditTextFocus();
+        Threads.instance().runOnWorkThread(new Task() {
+            @Override
+            public void onRun() {
+                boolean proxyOn = false;
+                String proxyHost = null;
+                long proxyPort = 0L;
+                ITrojanService service;
+                synchronized (lock) {
+                    service = trojanService;
+                }
+                if (service != null) {
+                    try {
+                        proxyOn = service.getState() == ProxyService.STARTED;
+                        proxyHost = service.getProxyHost();
+                        proxyPort = service.getProxyPort();
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
+                    }
+                }
+                startActivityForResult(ServerListActivity.create(MainActivity.this,
+                        proxyOn, proxyHost, proxyPort), SERVER_LIST_CHOOSE_REQUEST_CODE);
+            }
+        });
+    }
+
     @Override
     protected void onPostCreate(@Nullable Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
@@ -637,11 +726,12 @@ public class MainActivity extends AppCompatActivity implements TrojanConnection.
 
                     remoteServerRemarkText.setText(ins.getRemoteServerRemark());
                     remoteAddrText.setText(ins.getRemoteAddr());
+                    remoteAddrText.setSelection(remoteAddrText.length());
+                    remoteServerSNIText.setText(ins.getSNI());
                     remotePortText.setText(String.valueOf(ins.getRemotePort()));
                     passwordText.setText(ins.getPassword());
                     ipv6Switch.setChecked(ins.getEnableIpv6());
                     verifySwitch.setChecked(ins.getVerifyCert());
-                    remoteAddrText.setSelection(remoteAddrText.length());
                 }
             } catch (Exception e) {
                 e.printStackTrace();
