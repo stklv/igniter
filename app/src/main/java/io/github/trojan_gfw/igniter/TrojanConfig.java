@@ -172,6 +172,11 @@ public class TrojanConfig implements Parcelable {
         return this;
     }
 
+    public String getIdentifier() {
+        // The type of RemoteAddress doesn't affect the result, whether it's IPv4/IPv6/Domain
+        return getRemoteAddr() + ":" + getRemotePort();
+    }
+
     public String getRemoteAddr() {
         return remoteAddr;
     }
@@ -297,5 +302,23 @@ public class TrojanConfig implements Parcelable {
         dest.writeString(cipherList);
         dest.writeString(tls13CipherList);
         dest.writeString(SNI);
+    }
+
+    @Override
+    public String toString() {
+        return "TrojanConfig{" +
+                "localAddr='" + localAddr + '\'' +
+                ", localPort=" + localPort +
+                ", remoteAddr='" + remoteAddr + '\'' +
+                ", remoteServerRemark='" + remoteServerRemark + '\'' +
+                ", remotePort=" + remotePort +
+                ", password='" + password + '\'' +
+                ", verifyCert=" + verifyCert +
+                ", caCertPath='" + caCertPath + '\'' +
+                ", enableIpv6=" + enableIpv6 +
+                ", cipherList='" + cipherList + '\'' +
+                ", tls13CipherList='" + tls13CipherList + '\'' +
+                ", SNI='" + SNI + '\'' +
+                '}';
     }
 }
